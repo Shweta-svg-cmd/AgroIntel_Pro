@@ -1,4 +1,4 @@
-# app.py - Complete AgroIntel Application with Working AI Copilot
+#app.py - Complete AgroIntel Application with Working AI Copilot
 import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
