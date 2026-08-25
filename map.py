@@ -8,13 +8,13 @@ Merged app:
     (nasapower.py, openweather.py, rvo.py)
 
 Requires in the same folder:
-    app.py, database.py, ai_service_free.py,
+    map.py, database.py, ai_service_free.py,
     nasapower.py, openweather.py, rvo.py, .env
 
 Run:
     pip install streamlit streamlit-option-menu pandas plotly requests
                 python-dotenv deep-translator
-    streamlit run app.py
+    streamlit run map.py
 """
 
 import streamlit as st
@@ -24,6 +24,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -65,6 +66,8 @@ for key, default in {
     'user_id': None,
     'page': 'login',
     'ai_question': '',
+    'ask_ai': False,
+    'voice_enabled': True,
     'layer': 'orbit',
 }.items():
     if key not in st.session_state:
@@ -129,6 +132,52 @@ def plotly_dark(fig, height=320):
     return fig
 
 
+# ==================== VOICE OUTPUT FUNCTION ====================
+
+def get_voice_html(text):
+    """Generate HTML with voice playback functionality"""
+    if not text:
+        return ""
+    
+    escaped_text = text.replace("'", "\\'").replace('"', '\\"').replace('\n', ' ')
+    
+    return f"""
+    <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f0f7f0; border-radius: 8px;">
+        <button onclick="speakText()" style="
+            background: #2E7D32; 
+            color: white; 
+            border: none; 
+            padding: 0.5rem 1.2rem; 
+            border-radius: 20px; 
+            cursor: pointer; 
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        "
+        onmouseover="this.style.background='#1B5E20'"
+        onmouseout="this.style.background='#2E7D32'">
+            🔊 Listen to Response
+        </button>
+        <span style="color: #888; font-size: 0.8rem; margin-left: 0.8rem;">
+            Click to hear the AI response
+        </span>
+    </div>
+    <script>
+    function speakText() {{
+        var text = {repr(escaped_text)};
+        var utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+    }}
+    </script>
+    """
+
+
+# ==================== CSS ====================
 def apply_custom_css():
     st.html(f"""
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
@@ -287,10 +336,47 @@ def apply_custom_css():
         text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.1em;
     }}
     hr {{ border-color: {LINE}; }}
+
+    /* FIX: Remove blank spaces in AI output */
+    .ai-card > div {{
+        margin: 0 !important;
+        padding: 0 !important;
+    }}
+
+    /* Voice toggle styling */
+    .voice-toggle-container {{
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.5rem;
+        background: {PANEL2};
+        border-radius: 8px;
+        border: 1px solid {LINE};
+        margin-bottom: 1rem;
+    }}
+    .voice-toggle-label {{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.85rem;
+        color: {MUTED};
+    }}
+    .voice-toggle-status {{
+        font-weight: 600;
+        padding: 0.2rem 0.8rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+    }}
+    .voice-status-on {{
+        background: {ORBIT_DIM};
+        color: {ACCENT};
+    }}
+    .voice-status-off {{
+        background: {GRANTS_DIM};
+        color: {WARN};
+    }}
     </style>
     """)
 
-
+apply_custom_css()
 apply_custom_css()
 
 OPTION_MENU_STYLE = {
@@ -315,13 +401,13 @@ def show_registration():
         st.markdown("### 👤 Personal Information")
         col1, col2 = st.columns(2)
         with col1:
-            username = st.text_input("Username *", placeholder="Choose a unique username")
-            full_name = st.text_input("Full Name *", placeholder="John Doe")
-            email = st.text_input("Email *", placeholder="john@example.com")
-            phone = st.text_input("Phone Number", placeholder="+1 234 567 8900")
+            username = st.text_input("Username *", placeholder="Choose a unique username", autocomplete="username")
+            full_name = st.text_input("Full Name *", placeholder="John Doe", autocomplete="name")
+            email = st.text_input("Email *", placeholder="john@example.com", autocomplete="email")
+            phone = st.text_input("Phone Number", placeholder="+1 234 567 8900", autocomplete="tel")
         with col2:
-            password = st.text_input("Password *", type="password", placeholder="Minimum 6 characters")
-            confirm_password = st.text_input("Confirm Password *", type="password")
+            password = st.text_input("Password *", type="password", placeholder="Minimum 6 characters", autocomplete="new-password")
+            confirm_password = st.text_input("Confirm Password *", type="password", autocomplete="new-password")
 
         st.markdown("---")
         st.markdown("### 📍 Address Information")
@@ -329,17 +415,17 @@ def show_registration():
         with col1:
             address = st.text_area("Address", placeholder="Street address", height=80)
         with col2:
-            city = st.text_input("City", placeholder="Your city")
-            state = st.text_input("State/Province", placeholder="Your state")
+            city = st.text_input("City", placeholder="Your city", autocomplete="address-level2")
+            state = st.text_input("State/Province", placeholder="Your state", autocomplete="address-level1")
         with col3:
-            postal_code = st.text_input("Postal Code", placeholder="12345")
-            country = st.text_input("Country", placeholder="Your country")
+            postal_code = st.text_input("Postal Code", placeholder="12345", autocomplete="postal-code")
+            country = st.text_input("Country", placeholder="Your country", autocomplete="country")
 
         st.markdown("---")
         st.markdown("### 🚜 Farm Information")
         col1, col2, col3 = st.columns(3)
         with col1:
-            farm_name = st.text_input("Farm Name", placeholder="Sunset Farm")
+            farm_name = st.text_input("Farm Name", placeholder="Sunset Farm", autocomplete="off")
         with col2:
             farm_size = st.number_input("Farm Size (acres)", min_value=0.0, step=1.0)
         with col3:
@@ -494,8 +580,8 @@ def show_farm_management(data):
             st.markdown("### 🌱 Add New Field")
             col1, col2 = st.columns(2)
             with col1:
-                field_id = st.text_input("Field ID *", placeholder="e.g., F6")
-                field_name = st.text_input("Field Name *", placeholder="e.g., South Field")
+                field_id = st.text_input("Field ID *", placeholder="e.g., F6", autocomplete="off")
+                field_name = st.text_input("Field Name *", placeholder="e.g., South Field", autocomplete="off")
                 crop_type = st.selectbox("Crop Type", ["Winter Wheat", "Corn", "Soybeans", "Barley", "Potatoes", "Oats", "Sunflowers", "Other"])
                 acres = st.number_input("Acres *", min_value=0.0, step=0.5)
             with col2:
@@ -549,8 +635,8 @@ def show_machinery(data):
             st.markdown("### 🚜 Add New Machinery")
             col1, col2 = st.columns(2)
             with col1:
-                machine_id = st.text_input("Machine ID *", placeholder="e.g., M5")
-                machine_name = st.text_input("Machine Name *", placeholder="e.g., John Deere 6120")
+                machine_id = st.text_input("Machine ID *", placeholder="e.g., M5", autocomplete="off")
+                machine_name = st.text_input("Machine Name *", placeholder="e.g., John Deere 6120", autocomplete="off")
                 machine_type = st.selectbox("Machine Type", ["Tractor", "Combine", "Sprayer", "Plow", "Drill", "Harvester", "Other"])
                 operating_hours = st.number_input("Operating Hours", min_value=0, step=1)
             with col2:
@@ -679,10 +765,15 @@ def show_compliance(data):
         st.info("No compliance data available")
 
 
-# ==================== AI COPILOT PAGE ====================
+# ==================== AI COPILOT PAGE (FULLY FIXED) ====================
 
 def show_ai_copilot(data):
-    st.html('<div class="main-header"><h1>🤖 AI Copilot</h1></div>')
+    st.html("""
+        <div class="main-header">
+            <h1>🤖 AI Copilot</h1>
+            <p>Get predictive, explainable, and actionable guidance for your farm</p>
+        </div>
+    """)
 
     groq_key = os.getenv('GROQ_API_KEY', '')
     if groq_key:
@@ -700,20 +791,56 @@ def show_ai_copilot(data):
         </div>
     """)
 
+    # ============================================================
+    # VOICE TOGGLE
+    # ============================================================
+    st.markdown("### 🔊 Voice Settings")
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        voice_status = "🔊 ON" if st.session_state.voice_enabled else "🔇 OFF"
+        st.caption(f"Voice output: **{voice_status}**")
+
+    with col2:
+        if st.button("🔊 Enable Voice", use_container_width=True, key="enable_voice"):
+            st.session_state.voice_enabled = True
+            st.rerun()
+
+    with col3:
+        if st.button("🔇 Disable Voice", use_container_width=True, key="disable_voice"):
+            st.session_state.voice_enabled = False
+            st.rerun()
+
+    if st.session_state.voice_enabled:
+        st.success("✅ Voice output is **ENABLED** - AI responses will be spoken aloud")
+    else:
+        st.warning("⚠️ Voice output is **DISABLED** - Click 'Enable Voice' to turn it on")
+
+    st.markdown("---")
+
+    # Quick action buttons
     st.markdown("### 🔥 Quick Questions")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        if st.button("🌾 Crop Advice", use_container_width=True):
+        if st.button("🌾 Crop Advice", use_container_width=True, key="crop_advice"):
             st.session_state.ai_question = "What crops should I plant next season?"
+            st.session_state.ask_ai = True
+            st.rerun()
     with col2:
-        if st.button("📊 Farm Performance", use_container_width=True):
+        if st.button("📊 Farm Performance", use_container_width=True, key="farm_performance"):
             st.session_state.ai_question = "How is my farm performing overall?"
+            st.session_state.ask_ai = True
+            st.rerun()
     with col3:
-        if st.button("🚜 Machinery Health", use_container_width=True):
+        if st.button("🚜 Machinery Health", use_container_width=True, key="machinery_health"):
             st.session_state.ai_question = "What maintenance do my machines need?"
+            st.session_state.ask_ai = True
+            st.rerun()
     with col4:
-        if st.button("💰 Profit Optimization", use_container_width=True):
+        if st.button("💰 Profit Optimization", use_container_width=True, key="profit_optimization"):
             st.session_state.ai_question = "How can I increase my farm profits?"
+            st.session_state.ask_ai = True
+            st.rerun()
 
     st.markdown("---")
 
@@ -721,16 +848,16 @@ def show_ai_copilot(data):
         with st.expander("🔑 Get FREE Groq API Key", expanded=False):
             st.html("""
                 ### 🆓 Get Your Free Groq API Key (No Credit Card Required)
-                1. Go to [Groq Console](https://console.groq.com/)
+                1. Go to <a href="https://console.groq.com/" target="_blank">Groq Console</a>
                 2. Sign up with your email (free)
                 3. Go to API Keys section
                 4. Click "Create API Key"
                 5. Copy and paste it below
 
-                🔑 **Pro Tip:** Groq gives you 30 requests per minute for free!
+                🔑 <strong>Pro Tip:</strong> Groq gives you 30 requests per minute for free!
             """)
-            api_key = st.text_input("Enter your Groq API Key:", type="password")
-            if st.button("💾 Save API Key"):
+            api_key = st.text_input("Enter your Groq API Key:", type="password", key="groq_api_key_input", autocomplete="off")
+            if st.button("💾 Save API Key", key="save_api_key"):
                 if api_key:
                     os.environ['GROQ_API_KEY'] = api_key
                     st.success("✅ API Key saved for this session!")
@@ -738,52 +865,130 @@ def show_ai_copilot(data):
                 else:
                     st.error("❌ Please enter a valid API key")
 
-    user_question = st.text_area(
-        "✍️ Ask your question:",
-        placeholder="e.g., Which field is most profitable? What should I do about low soil nitrogen?",
-        height=80, key="ai_question_input"
-    )
+    # Chat input
+    st.markdown("### ✍️ Ask a Question")
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        ask_button = st.button("🤖 Ask AI (FREE)", use_container_width=True)
+    with st.form(key="ai_question_form", clear_on_submit=True):
+        user_question = st.text_input(
+            "Type your question here:",
+            placeholder="e.g., Which field is most profitable? What should I do about low soil nitrogen?",
+            key="ai_question_input",
+            label_visibility="collapsed",
+            autocomplete="off"
+        )
 
-    question = user_question or st.session_state.get('ai_question', '')
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            submit_button = st.form_submit_button("🤖 Ask AI (FREE)", use_container_width=True)
 
-    if ask_button and question:
+    # Process question
+    question_to_process = None
+
+    if st.session_state.get('ask_ai', False):
+        question_to_process = st.session_state.get('ai_question', '')
+        st.session_state.ask_ai = False
+
+    elif submit_button and user_question:
+        question_to_process = user_question
+
+    if question_to_process:
         st.markdown("---")
-        with st.spinner("🤔 Analyzing your farm data with AI..."):
-            ai = ai_service.GroqAIService()
-            result = ai.get_farm_analysis(question, data)
 
-            st.markdown("### 🤖 AI Response")
-            if result['success']:
-                st.caption(f"⚡ Powered by: {result.get('source', 'Groq AI')} (FREE)")
-                st.markdown(f"""
-                    <div class="ai-card">
-                        <h4>💡 AI Analysis</h4>
-                        <div style="white-space: pre-wrap; font-size: 1rem; line-height: 1.6;">
-                            {result['response']}
-                        </div>
-                    </div>
-                """)
-            else:
-                st.warning(f"⚠️ {result.get('error', 'AI error occurred')}")
-                st.info("💡 Using offline analysis...")
-                st.html(f"""
-                    <div class="ai-card">
-                        <h4>💡 Analysis (Offline Mode)</h4>
-                        <div style="white-space: pre-wrap; font-size: 1rem; line-height: 1.6;">
-                            {result['response']}
-                        </div>
-                    </div>
-                """)
+        with st.spinner("🤔 Analyzing your farm data with AI..."):
+            try:
+                ai = ai_service.GroqAIService()
+                result = ai.get_farm_analysis(question_to_process, data)
+
+                st.markdown("### 🤖 AI Response")
+
+                if result['success']:
+                    st.caption(f"⚡ Powered by: {result.get('source', 'Groq AI')} (FREE)")
+
+                    response_text = result['response']
+
+                    # Clean HTML tags and entities out of the AI's raw response
+                    cleaned_response = re.sub(r'<[^>]+>', '', response_text)
+                    cleaned_response = re.sub(r'\n\s*\n', '\n\n', cleaned_response)
+                    cleaned_response = cleaned_response.strip()
+
+                    cleaned_response = cleaned_response.replace('&nbsp;', ' ')
+                    cleaned_response = cleaned_response.replace('&amp;', '&')
+                    cleaned_response = cleaned_response.replace('&lt;', '<')
+                    cleaned_response = cleaned_response.replace('&gt;', '>')
+
+                    st.session_state.ai_response = cleaned_response
+
+                    # FIXED: render markdown content in its own st.markdown() call,
+                    # inside a bordered container, instead of embedding it inside
+                    # a raw HTML <div> string (which broke on blank lines).
+                    with st.container(border=True):
+                        st.markdown("#### 💡 AI Analysis")
+                        st.markdown(cleaned_response)
+
+                    # Voice output
+                    if st.session_state.voice_enabled and cleaned_response:
+                        voice_html = get_voice_html(cleaned_response)
+                        st.components.v1.html(voice_html, height=70)
+
+                        auto_play_js = f"""
+                        <script>
+                        (function() {{
+                            var text = {repr(cleaned_response)};
+                            var utterance = new SpeechSynthesisUtterance(text);
+                            utterance.lang = 'en-US';
+                            utterance.rate = 0.9;
+                            utterance.pitch = 1;
+                            utterance.volume = 1;
+                            window.speechSynthesis.cancel();
+                            window.speechSynthesis.speak(utterance);
+                        }})();
+                        </script>
+                        """
+                        st.components.v1.html(auto_play_js, height=0)
+                    elif not st.session_state.voice_enabled:
+                        st.info("🔇 Voice output is disabled. Click 'Enable Voice' above to hear responses.")
+
+                else:
+                    st.warning(f"⚠️ {result.get('error', 'AI error occurred')}")
+                    st.info("💡 Using offline analysis...")
+
+                    response_text = result['response']
+                    cleaned_response = re.sub(r'<[^>]+>', '', response_text)
+                    cleaned_response = re.sub(r'\n\s*\n', '\n\n', cleaned_response)
+                    cleaned_response = cleaned_response.strip()
+
+                    with st.container(border=True):
+                        st.markdown("#### 💡 Analysis (Offline Mode)")
+                        st.markdown(cleaned_response)
+
+                    if st.session_state.voice_enabled and cleaned_response:
+                        voice_html = get_voice_html(cleaned_response)
+                        st.components.v1.html(voice_html, height=70)
+
+                        auto_play_js = f"""
+                        <script>
+                        (function() {{
+                            var text = {repr(cleaned_response)};
+                            var utterance = new SpeechSynthesisUtterance(text);
+                            utterance.lang = 'en-US';
+                            utterance.rate = 0.9;
+                            utterance.pitch = 1;
+                            utterance.volume = 1;
+                            window.speechSynthesis.cancel();
+                            window.speechSynthesis.speak(utterance);
+                        }})();
+                        </script>
+                        """
+                        st.components.v1.html(auto_play_js, height=0)
+
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+                st.info("Please try again or check your API key.")
 
         if 'ai_question' in st.session_state:
-            del st.session_state.ai_question
+            st.session_state.ai_question = ''
 
-        show_related_data(question, data)
-
+        show_related_data(question_to_process, data)
 
 def show_related_data(question, data):
     question_lower = question.lower()
@@ -937,7 +1142,7 @@ def _render_atmosphere():
 
     colA, colB = st.columns([3, 1])
     with colA:
-        city = st.text_input("City", value="Nashik")
+        city = st.text_input("City", value="Nashik", autocomplete="address-level2")
     with colB:
         st.write("")
         st.write("")
@@ -1065,7 +1270,7 @@ def _render_grants():
 
     tcol1, tcol2 = st.columns([3, 1])
     with tcol1:
-        search = st.text_input("Filter by keyword", placeholder="e.g. mest, energie, krediet")
+        search = st.text_input("Filter by keyword", placeholder="e.g. mest, energie, krediet", autocomplete="off")
     with tcol2:
         st.write("")
         if TRANSLATE_AVAILABLE:
@@ -1118,18 +1323,13 @@ def _render_grants():
 # ==================== FARM MAP (Digital Twin) ====================
 
 def _yield_to_color(value, low, high):
-    """
-    Interpolates between amber (low yield) and green (high yield),
-    matching the app's GRANTS -> ACCENT theme colors.
-    Returns a hex string. Falls back to muted gray if value/range is invalid.
-    """
     if value is None or high is None or low is None or high <= low:
         return DEFAULT_CROP_COLOR
 
     t = max(0.0, min(1.0, (value - low) / (high - low)))
 
-    low_rgb = (224, 169, 62)   # GRANTS (amber) — low yield
-    high_rgb = (143, 209, 79)  # ACCENT (green) — high yield
+    low_rgb = (224, 169, 62)
+    high_rgb = (143, 209, 79)
 
     r = int(low_rgb[0] + (high_rgb[0] - low_rgb[0]) * t)
     g = int(low_rgb[1] + (high_rgb[1] - low_rgb[1]) * t)
@@ -1138,17 +1338,11 @@ def _yield_to_color(value, low, high):
 
 
 def _field_polygon(center_lat, center_lon, acres, aspect=1.15):
-    """
-    Build a simple rectangular polygon centered at (center_lat, center_lon),
-    sized so its area roughly matches `acres`. Used when we don't have a
-    real surveyed boundary for the field yet.
-    """
     acre_to_m2 = 4046.86
     area_m2 = max(acres, 0.5) * acre_to_m2
     width_m = math.sqrt(area_m2 * aspect)
     height_m = math.sqrt(area_m2 / aspect)
 
-    # meters -> degrees (rough, fine at field scale)
     dlat = (height_m / 2) / 111320
     dlon = (width_m / 2) / (111320 * math.cos(math.radians(center_lat)))
 
@@ -1161,15 +1355,6 @@ def _field_polygon(center_lat, center_lon, acres, aspect=1.15):
 
 
 def build_field_map(fields, center_lat, center_lon):
-    """
-    Lays fields out in a grid around (center_lat, center_lon), sized by
-    acreage, colored by yield (amber = low, green = high). Real satellite
-    imagery base layer with optional street/dark toggles.
-
-    Swap in real boundary coordinates per field (e.g. field['boundary'])
-    once you have surveyed/GPS data — the polygon call is the only thing
-    that needs to change.
-    """
     n = len(fields)
     cols = math.ceil(math.sqrt(n)) if n else 1
     spacing_lat = 0.0075
@@ -1186,7 +1371,6 @@ def build_field_map(fields, center_lat, center_lon):
         control_scale=True,
     )
 
-    # Real satellite imagery as the default base layer
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri World Imagery",
@@ -1244,7 +1428,6 @@ def build_field_map(fields, center_lat, center_lon):
             tooltip=f"{field.get('name', 'Field')} — {field.get('yield', '—')} t/ha",
         ).add_to(m)
 
-        # field name label directly on the map
         folium.Marker(
             location=[f_lat, f_lon],
             icon=folium.DivIcon(html=f"""
@@ -1296,7 +1479,6 @@ def show_farm_map(data):
     fmap, low_yield, high_yield = build_field_map(fields, center_lat, center_lon)
     st_folium(fmap, use_container_width=True, height=560)
 
-    # yield gradient legend
     if low_yield is not None and high_yield is not None:
         st.html(f"""
         <div style="margin-top:0.8rem; display:flex; align-items:center; gap:0.8rem;">
@@ -1315,7 +1497,6 @@ def show_farm_map(data):
         </div>
         """)
 
-    # best / worst yield callouts
     yielded_fields = [f for f in fields if f.get("yield")]
     if yielded_fields:
         best = max(yielded_fields, key=lambda f: float(f["yield"]))
@@ -1398,8 +1579,8 @@ def main():
             tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
             with tab1:
                 with st.form("login_form"):
-                    username = st.text_input("Username", placeholder="Enter your username")
-                    password = st.text_input("Password", type="password", placeholder="Enter your password")
+                    username = st.text_input("Username", placeholder="Enter your username", autocomplete="username")
+                    password = st.text_input("Password", type="password", placeholder="Enter your password", autocomplete="current-password")
                     submitted = st.form_submit_button("Login", use_container_width=True)
                     if submitted:
                         user = db.get_user(username, password)
