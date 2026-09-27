@@ -30,15 +30,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
+import re
+import html
 from dotenv import load_dotenv
 
 load_dotenv()
-
-api_key = os.getenv('GROQ_API_KEY', '')
-if api_key:
-    print("✅ API Key loaded successfully!")
-else:
-    print("❌ No API Key found in .env")
 
 import database as db
 import ai_service_free as ai_service
@@ -72,6 +68,9 @@ for key, default in {
     'page': 'login',
     'ai_question': '',
     'layer': 'orbit',
+    'copilot_messages': [],
+    'gemini_api_key': os.getenv('GEMINI_API_KEY', ''),
+    'ai_suggestions': None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -100,7 +99,7 @@ ATMOS_DIM = "#2E4A56"
 GRANTS = "#E0A93E"
 GRANTS_DIM = "#4A3D22"
 TEXT = "#E9EEE7"
-MUTED = "#7F9482"
+MUTED = "#A8B6A5"
 ACCENT = "#8FD14F"
 WARN = "#E0965B"
 DANGER = "#E0705B"
@@ -300,6 +299,98 @@ def apply_custom_css():
         text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.1em;
     }}
     hr {{ border-color: {LINE}; }}
+
+    .field-guide-hero {{ position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;
+        min-height:205px;padding:2.1rem 2.3rem;margin:.2rem 0 1.2rem;border-radius:22px;
+        color:{TEXT};background:radial-gradient(ellipse at 85% 120%,rgba(143,209,79,.2),transparent 38%),
+        linear-gradient(120deg,#101D15 0%,#173321 56%,#23452B 100%);border:1px solid #304834;box-shadow:0 18px 44px rgba(0,0,0,.22); }}
+    .field-guide-hero .hero-copy {{ position:relative;z-index:1;max-width:700px; }}
+    .field-guide-hero .eyebrow {{ color:{ACCENT};font:700 .7rem 'IBM Plex Mono',monospace;letter-spacing:.15em;margin-bottom:.75rem; }}
+    .field-guide-hero h1 {{ color:#F4F8F0!important;font:700 2.4rem 'Space Grotesk',sans-serif!important;line-height:1.06;margin:0 0 .65rem!important; }}
+    .field-guide-hero p {{ color:#A9BDA9;font-size:.98rem;line-height:1.55;margin:0;max-width:620px; }}
+    .hero-orbit {{ z-index:1;flex:0 0 112px;width:112px;height:112px;border-radius:50%;display:grid;place-items:center;color:#E9FFD4;font-size:2.1rem;
+        background:linear-gradient(145deg,rgba(143,209,79,.2),rgba(143,209,79,.04));border:1px solid #526A43;box-shadow:inset 0 0 25px rgba(143,209,79,.08); }}
+    .guide-stat {{ min-height:117px;padding:1rem 1.1rem;border-radius:15px;background:linear-gradient(145deg,{PANEL2},{PANEL});border:1px solid {LINE};box-shadow:0 6px 18px rgba(0,0,0,.12); }}
+    .guide-stat .icon {{ font-size:1.22rem; }} .guide-stat .value {{ font:700 1.65rem 'IBM Plex Mono',monospace;color:{TEXT};margin:.35rem 0 .1rem; }}
+    .guide-stat .label {{ color:#C1D1BF;font-size:.84rem;font-weight:700; }} .guide-stat .hint {{ color:{MUTED};font-size:.68rem;margin-top:.1rem; }}
+    .guide-coverage {{ padding:1rem 1.15rem;border-radius:15px;background:{PANEL};border:1px solid {LINE}; }}
+    .guide-coverage-top {{ display:flex;justify-content:space-between;gap:.8rem;color:#A9BCA9;font-size:.78rem;margin-bottom:.42rem; }}
+    .guide-track {{ height:7px;border-radius:9px;background:#26362A;overflow:hidden;margin-bottom:.85rem; }}
+    .guide-track:last-child {{ margin-bottom:0; }} .guide-track span {{ display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#659C46,{ACCENT}); }}
+    .guide-cta {{ padding:1rem 1.2rem;border-radius:15px;background:linear-gradient(120deg,#18271B,#1C2F1F);border:1px solid #344A32; }}
+    .guide-cta strong {{ color:#E6F2DC;font-size:1rem; }} .guide-cta p {{ color:{MUTED};font-size:.78rem;margin:.28rem 0 0; }}
+    .plan-section-label {{ margin:1.5rem 0 .6rem;color:#DAE8D4;font:700 1.12rem 'Space Grotesk',sans-serif; }}
+    .plan-card {{ padding:.95rem 1.1rem;margin:.55rem 0;border-radius:14px;background:{PANEL};border:1px solid {LINE};box-shadow:0 7px 20px rgba(0,0,0,.11); }}
+    .plan-card.action {{ border-left:3px solid {ACCENT}; }} .plan-card.caution {{ border-left:3px solid {GRANTS};background:#1D1A14; }} .plan-card.gap {{ border-left:3px solid {ATMOS};background:#111B1F; }}
+    .plan-card-head {{ display:flex;justify-content:space-between;margin-bottom:.5rem; }} .plan-step {{ color:{MUTED};font:600 .65rem 'IBM Plex Mono',monospace;letter-spacing:.1em; }}
+    .plan-priority {{ padding:.18rem .55rem;border-radius:99px;background:#263923;color:{ACCENT};font:600 .64rem 'IBM Plex Mono',monospace; }}
+    .plan-card.caution .plan-priority {{ background:{GRANTS_DIM};color:#F0CB87; }} .plan-card.gap .plan-priority {{ background:{ATMOS_DIM};color:#9BD8EF; }}
+    .plan-copy {{ color:#BDCCBC;font-size:.87rem;line-height:1.65; }} .plan-copy p {{ margin:.35rem 0; }} .plan-copy ul {{ padding-left:1.1rem;margin:.3rem 0; }}
+    .ai-answer-shell {{ padding:.95rem 1rem;border-radius:16px;background:linear-gradient(145deg,{PANEL2},{PANEL});border:1px solid {LINE};margin:.7rem 0; }}
+    .ai-answer-head {{ display:flex;align-items:center;gap:.7rem;padding:.1rem .1rem .8rem;border-bottom:1px solid {LINE};margin-bottom:.75rem; }}
+    .ai-answer-icon {{ width:38px;height:38px;flex:0 0 38px;border-radius:12px;display:grid;place-items:center;color:#EBFFD7;background:linear-gradient(145deg,#345F35,#779F46);font-size:1.1rem; }}
+    .ai-answer-title {{ color:#E6F0E2;font-size:.96rem;font-weight:800; }} .ai-answer-subtitle {{ color:{MUTED};font-size:.7rem;margin-top:.15rem; }}
+    .ai-answer-provider {{ margin-left:auto;padding:.25rem .55rem;border:1px solid #354638;border-radius:99px;color:#AFC39F;background:#172219;font:600 .62rem 'IBM Plex Mono',monospace; }}
+    .ai-answer-summary {{ padding:.8rem .95rem;margin:.4rem 0 .7rem;border-radius:12px;background:#18251A;border-left:3px solid {ACCENT};color:#D2E2CA;font-size:.9rem;line-height:1.65; }}
+    .ai-answer-section-title {{ color:#BDD1B7;font-size:.8rem;font-weight:800;margin:.85rem .1rem .38rem; }}
+    .ai-answer-step {{ display:flex;gap:.7rem;align-items:flex-start;padding:.7rem .8rem;margin:.4rem 0;border-radius:12px;background:#111B14;border:1px solid #29372B; }}
+    .ai-answer-step-num {{ width:24px;height:24px;flex:0 0 24px;display:grid;place-items:center;border-radius:8px;background:#293B25;color:{ACCENT};font:700 .7rem 'IBM Plex Mono',monospace; }}
+    .ai-answer-copy {{ min-width:0;flex:1;color:#B9C9B7;font-size:.83rem;line-height:1.6; }} .ai-answer-copy p {{ margin:.1rem 0 .35rem; }} .ai-answer-copy ul {{ padding-left:1.05rem;margin:.25rem 0; }}
+
+    /* Apply the dark palette to Streamlit's native surfaces and their text. */
+    [data-testid="stSidebar"], [data-testid="stSidebar"] > div,
+    [data-testid="stSidebarContent"], [data-testid="stSidebarUserContent"] {{ background:#0E1711!important; }}
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+    [data-testid="stSidebar"] label {{ color:#E1EADF!important; }}
+    [data-testid="stSidebar"] .sidebar-brand h2 {{ background:none!important;-webkit-text-fill-color:#EAF2E6!important;color:#EAF2E6!important; }}
+    [data-testid="stSidebar"] .sidebar-brand p {{ color:#A8B6A5!important; }}
+    [data-testid="stSidebar"] button, [data-testid="stSidebar"] button p,
+    [data-testid="stSidebar"] button span {{ color:#E1EADF!important;-webkit-text-fill-color:#E1EADF!important; }}
+    [data-testid="stSidebar"] hr {{ border-color:#28372B!important; }}
+    .stApp [data-testid="stMarkdownContainer"] p,
+    .stApp [data-testid="stMarkdownContainer"] li,
+    .stApp [data-testid="stMarkdownContainer"] blockquote {{ color:#DCE7D9; }}
+    .stApp a {{ color:#A9D779; }} .stApp a:hover {{ color:#D3F1AA; }}
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {{ color:#E9EEE7; }}
+    .stApp label, .stApp [data-testid="stWidgetLabel"] p,
+    .stApp [data-testid="stWidgetLabel"] {{ color:#DCE7D9!important; }}
+    .stApp [data-testid="stButton"] button,
+    .stApp .stButton > button,
+    .stApp button[kind="secondary"] {{ color:#E4EDE1!important;-webkit-text-fill-color:#E4EDE1!important; }}
+    .stApp [data-testid="stButton"] button *, .stApp .stButton > button * {{ color:#E4EDE1!important;-webkit-text-fill-color:#E4EDE1!important; }}
+    .stApp [data-testid="stButton"] button[kind="primary"],
+    .stApp .stButton > button[kind="primary"] {{ color:#F7FFF2!important;-webkit-text-fill-color:#F7FFF2!important; }}
+    .stApp [data-testid="stButton"] button[kind="primary"] *, .stApp .stButton > button[kind="primary"] * {{ color:#F7FFF2!important;-webkit-text-fill-color:#F7FFF2!important; }}
+    .stApp [data-testid="stCaptionContainer"], .stApp [data-testid="stCaptionContainer"] p {{ color:#A8B6A5!important; }}
+    [data-testid="stChatMessage"] {{ background:#142017!important;border:1px solid #304033!important;border-radius:14px!important; }}
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"],
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {{ color:#E1EADF!important; }}
+    [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background:#0A120D!important; }}
+    .ai-answer-title {{ color:#F0F7EB!important; }} .ai-answer-subtitle {{ color:#A9BBA6!important; }}
+    .ai-answer-provider {{ color:#D2E6C8!important; }} .ai-answer-summary {{ color:#E0EBDD!important; }}
+    .ai-answer-section-title {{ color:#D1E3C9!important; }} .ai-answer-copy {{ color:#D0DDCD!important; }}
+    .ai-answer-copy p, .ai-answer-copy li {{ color:#D0DDCD!important; }}
+    [data-testid="stSidebar"] a.nav-link, [data-testid="stSidebar"] a.nav-link span {{ color:#E1EADF!important;-webkit-text-fill-color:#E1EADF!important; }}
+    [data-testid="stSidebar"] a.nav-link-selected, [data-testid="stSidebar"] a.nav-link-selected span {{ color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important; }}
+    [data-testid="stSidebar"] button, [data-testid="stSidebar"] button * {{ color:#E1EADF!important;-webkit-text-fill-color:#E1EADF!important; }}
+    .stApp input, .stApp textarea, .stApp [data-baseweb="select"] > div,
+    .stApp [data-testid="stChatInput"] textarea {{ background:#142017!important;color:#E9EEE7!important;-webkit-text-fill-color:#E9EEE7!important;caret-color:{ACCENT}!important; }}
+    .stApp [data-baseweb="select"] *, .stApp [data-testid="stSelectbox"] *,
+    .stApp [data-testid="stMultiSelect"] * {{ color:#E9EEE7!important; }}
+    .stApp input::placeholder, .stApp textarea::placeholder,
+    .stApp [data-testid="stChatInput"] textarea::placeholder {{ color:#A8B6A5!important;-webkit-text-fill-color:#A8B6A5!important;opacity:1!important; }}
+    .stApp [data-testid="stChatInput"] button {{ color:#E4F0DC!important; }}
+    .stApp [data-testid="stChatInput"] button svg {{ fill:#E4F0DC!important; }}
+    .stApp [data-baseweb="popover"], .stApp [data-baseweb="menu"], .stApp [role="listbox"], .stApp [role="option"] {{ background:#142017!important;color:#E9EEE7!important; }}
+    .stApp [role="option"] *, .stApp [role="listbox"] * {{ color:#E9EEE7!important; }}
+    .stApp [data-testid="stDataFrame"], .stApp [data-testid="stTable"] {{ color:#E0E9DD!important; }}
+    .stApp [data-testid="stMetricLabel"], .stApp [data-testid="stMetricDelta"] {{ color:#B8C7B4!important; }}
+    .stApp [data-testid="stAlert"] p {{ color:#E9EEE7!important; }}
+    .stApp [data-testid="stExpander"] summary, .stApp [data-testid="stExpander"] summary p {{ color:#DFE9DB!important; }}
+    .stApp [data-testid="stTabs"] button {{ color:#B9C8B7!important; }}
+    .stApp [data-testid="stTabs"] button[aria-selected="true"] {{ color:#E5F4D9!important; }}
     </style>
     """)
 
@@ -307,10 +398,10 @@ def apply_custom_css():
 apply_custom_css()
 
 OPTION_MENU_STYLE = {
-    "container": {"padding": "0!important", "background-color": "transparent"},
+    "container": {"padding": "0!important", "background-color": PANEL, "border-radius": "10px"},
     "icon": {"color": ACCENT, "font-size": "16px"},
     "nav-link": {"font-size": "14px", "text-align": "left", "color": TEXT, "--hover-color": PANEL2},
-    "nav-link-selected": {"background-color": ORBIT_DIM, "color": TEXT},
+    "nav-link-selected": {"background-color": ORBIT_DIM, "color": "#FFFFFF"},
 }
 
 
@@ -396,7 +487,7 @@ def show_registration():
 
 # ==================== PROFILE PAGE ====================
 
-def show_profile():
+def show_profile(data):
     user = db.get_user_by_id(st.session_state.user_id)
     if not user:
         st.error("User not found")
@@ -408,6 +499,7 @@ def show_profile():
             <p>Welcome back, {user['full_name']}!</p>
         </div>
     """)
+    show_page_ai("My Profile", data, "What farm information should I add to receive more useful guidance?")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -444,6 +536,7 @@ def show_dashboard(data):
             <p>Welcome back! Here's your farm overview for {datetime.now().strftime('%B %d, %Y')}</p>
         </div>
     """)
+    show_page_ai("Dashboard", data, "What stands out in my farm overview, and what should I check first?")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -501,6 +594,7 @@ def show_dashboard(data):
 
 def show_farm_management(data):
     st.html('<div class="main-header"><h1>🚜 Farm Management</h1></div>')
+    show_page_ai("Farm Management", data, "Which fields may need attention based on recorded crop, yield, and soil-health data?")
 
     with st.expander("➕ Add New Field", expanded=False):
         with st.form("add_field_form"):
@@ -556,6 +650,7 @@ def show_farm_management(data):
 
 def show_machinery(data):
     st.html('<div class="main-header"><h1>⚙️ Machinery Management</h1></div>')
+    show_page_ai("Machinery", data, "Which equipment needs attention based on its status, fuel, and recorded hours?")
 
     with st.expander("➕ Add New Machinery", expanded=False):
         with st.form("add_machinery_form"):
@@ -611,6 +706,7 @@ def show_machinery(data):
 
 def show_soil_analysis(data):
     st.html('<div class="main-header"><h1>🧪 Soil Analysis</h1></div>')
+    show_page_ai("Soil Analysis", data, "Explain my soil test results and what should be checked before changing inputs.")
 
     with st.expander("➕ Add Soil Analysis", expanded=False):
         with st.form("add_soil_form"):
@@ -652,6 +748,7 @@ def show_soil_analysis(data):
 
 def show_weather(data):
     st.html('<div class="main-header"><h1>🌤️ Farm Weather Log</h1><p>Historical weather logged for your farm records</p></div>')
+    show_page_ai("Weather", data, "What do my recent recorded weather observations suggest for planning?")
 
     if data['weather'] and len(data['weather']) > 0:
         latest = data['weather'][-1]
@@ -679,6 +776,7 @@ def show_weather(data):
 
 def show_compliance(data):
     st.html('<div class="main-header"><h1>📋 Compliance & Reporting</h1></div>')
+    show_page_ai("Compliance", data, "Summarize my compliance records and identify any recorded deadlines needing attention.")
     st.html(f"""
         <div class="metric-card">
             <div class="metric-value">{data['compliance_score']}%</div>
@@ -692,110 +790,259 @@ def show_compliance(data):
         st.info("No compliance data available")
 
 
+# ==================== FARM AI ====================
+
+def _farm_ai_service():
+    return ai_service.FarmAIService(
+        gemini_api_key=st.session_state.get('gemini_api_key') or None,
+        groq_api_key=os.getenv('GROQ_API_KEY') or None,
+    )
+
+
+def show_ai_setup():
+    provider = _farm_ai_service().provider
+    if provider:
+        st.caption(f"✦ AI connected: {provider} · Farm records are sent only when you submit an AI request.")
+        return
+    with st.expander("Connect Gemini AI", expanded=True):
+        st.markdown("Create a key in [Google AI Studio](https://aistudio.google.com/app/apikey) and add it here. The key stays in this browser session; use a server secret for deployment.")
+        key = st.text_input("Gemini API key", type="password", key="gemini_key_input_jd")
+        if st.button("Connect Gemini", key="connect_gemini_jd"):
+            if key.strip():
+                st.session_state.gemini_api_key = key.strip()
+                st.rerun()
+            else:
+                st.warning("Paste your Gemini API key first.")
+
+
+def show_page_ai(page_name, data, suggested_question):
+    with st.expander(f"✦ Ask AgroIntel about {page_name}"):
+        if not _farm_ai_service().provider:
+            st.markdown("Connect a key from [Google AI Studio](https://aistudio.google.com/app/apikey) to get personalized answers.")
+            page_key = st.text_input("Gemini API key", type="password", key=f"page_gemini_key_{page_name}")
+            if st.button("Connect Gemini", key=f"page_connect_gemini_{page_name}") and page_key.strip():
+                st.session_state.gemini_api_key = page_key.strip()
+                st.rerun()
+        st.caption("Grounded in your recorded farm information. Confirm high-impact decisions with local agronomic guidance.")
+        question = st.text_area("What would you like to know?", value=suggested_question,
+                                key=f"page_ai_question_{page_name}", height=75)
+        if st.button("✦ Generate farm insight", key=f"page_ai_submit_{page_name}", type="primary"):
+            if not question.strip():
+                st.warning("Enter a question first.")
+            else:
+                with st.spinner("Reviewing your farm records…"):
+                    context = dict(data)
+                    if page_name == "Field Intelligence":
+                        layer = st.session_state.get("layer", "orbit")
+                        context["field_intelligence"] = {
+                            "active_layer": layer,
+                            "observations": st.session_state.get(f"{layer}_data"),
+                        }
+                    result = _farm_ai_service().get_farm_analysis(question, context, focus=page_name)
+                if not result['success']:
+                    st.warning(result['error'])
+                render_ai_answer(result['response'], result.get('source', 'Farm AI'))
+
+
+def _safe_ai_markup(text):
+    escaped = html.escape(text, quote=True)
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", escaped)
+    output, list_open = [], False
+    for raw_line in escaped.splitlines():
+        line = raw_line.strip()
+        bullet = re.match(r"^(?:[-*]|\d+[.)])\s+(.+)$", line)
+        if bullet:
+            if not list_open:
+                output.append("<ul>")
+                list_open = True
+            output.append(f"<li>{bullet.group(1)}</li>")
+        else:
+            if list_open:
+                output.append("</ul>")
+                list_open = False
+            if line:
+                output.append(f"<p>{line}</p>")
+    if list_open:
+        output.append("</ul>")
+    return "".join(output)
+
+
+def render_ai_answer(answer, source="AgroIntel AI"):
+    sections, title, lines, summary = [], "", [], []
+    for line in answer.splitlines():
+        heading = re.match(r"^#{1,3}\s+(.+?)\s*$", line)
+        if heading:
+            if title or any(part.strip() for part in lines):
+                sections.append((title, lines))
+            elif not sections and any(part.strip() for part in summary):
+                sections.append(("Details", summary))
+                summary = []
+            title, lines = heading.group(1), []
+        elif title:
+            lines.append(line)
+        else:
+            summary.append(line)
+    if title or any(part.strip() for part in lines):
+        sections.append((title, lines))
+    if not sections and any(part.strip() for part in summary):
+        paragraphs = re.split(r"\n\s*\n", "\n".join(summary).strip())
+        summary = paragraphs[0].splitlines()
+        if len(paragraphs) > 1:
+            sections.append(("More detail", "\n\n".join(paragraphs[1:]).splitlines()))
+    if not any(part.strip() for part in summary) and sections:
+        first_title, first_lines = sections.pop(0)
+        summary = [f"**{first_title}**", *first_lines]
+
+    st.html(f'''<div class="ai-answer-shell"><div class="ai-answer-head">
+        <div class="ai-answer-icon">✦</div><div><div class="ai-answer-title">Your farm insight</div>
+        <div class="ai-answer-subtitle">Personalized guidance based on your recorded data</div></div>
+        <span class="ai-answer-provider">{html.escape(str(source))}</span></div></div>''')
+    if any(part.strip() for part in summary):
+        st.html(f'<div class="ai-answer-summary">{_safe_ai_markup(chr(10).join(summary))}</div>')
+    for section_title, section_lines in sections:
+        normalized = section_title.lower()
+        icon = "🟠" if any(word in normalized for word in ("caution", "avoid", "hold", "risk", "not do")) else (
+            "🔎" if any(word in normalized for word in ("evidence", "data", "detail", "monitor")) else "🌱")
+        st.html(f'<div class="ai-answer-section-title">{icon} &nbsp;{html.escape(section_title or "Helpful next steps")}</div>')
+        cards, current = [], []
+        for line in section_lines:
+            if re.match(r"^\s*\d+[.)]\s+", line) and current and any(part.strip() for part in current):
+                cards.append(current)
+                current = [line]
+            else:
+                current.append(line)
+        if current and any(part.strip() for part in current):
+            cards.append(current)
+        for index, card in enumerate(cards, 1):
+            content = "\n".join(card).strip()
+            number = re.match(r"^\s*(\d+)[.)]\s+", content)
+            if number:
+                content = re.sub(r"^\s*\d+[.)]\s+", "", content, count=1)
+            st.html(f'<div class="ai-answer-step"><div class="ai-answer-step-num">{number.group(1) if number else "•"}</div><div class="ai-answer-copy">{_safe_ai_markup(content)}</div></div>')
+
+
+def render_suggestion_plan(markdown_text):
+    sections, title, lines = [], "", []
+    for line in markdown_text.splitlines():
+        heading = re.match(r"^#{1,3}\s+(.+?)\s*$", line)
+        if heading:
+            if title or any(part.strip() for part in lines):
+                sections.append((title, lines))
+            title, lines = heading.group(1), []
+        else:
+            lines.append(line)
+    if title or any(part.strip() for part in lines):
+        sections.append((title, lines))
+    if not sections:
+        render_ai_answer(markdown_text, "Farm action plan")
+        return
+    for section_title, section_lines in sections:
+        normalized = section_title.lower()
+        card_type = "caution" if any(word in normalized for word in ("hold off", "do not", "avoid")) else (
+            "gap" if any(word in normalized for word in ("data", "collect", "missing")) else "action")
+        icon = "🟠" if card_type == "caution" else ("🔎" if card_type == "gap" else "🌱")
+        st.html(f'<div class="plan-section-label">{icon} &nbsp;{html.escape(section_title or "Farm action plan")}</div>')
+        items, current = [], []
+        for line in section_lines:
+            starts_item = bool(re.match(r"^\s*(?:\d+[.)]|[-*])\s+", line))
+            if starts_item and current and any(part.strip() for part in current):
+                items.append(current)
+                current = [line]
+            else:
+                current.append(line)
+        if current and any(part.strip() for part in current):
+            items.append(current)
+        if not items:
+            items = [section_lines]
+        for index, item in enumerate(items, 1):
+            content = "\n".join(item).strip()
+            number = re.match(r"^\s*(\d+)[.)]\s+", content)
+            if number:
+                content = re.sub(r"^\s*\d+[.)]\s+", "", content, count=1)
+            priority = "CHECK" if card_type == "caution" else ("DATA GAP" if card_type == "gap" else "NEXT STEP")
+            step = f"ACTION {number.group(1)}" if number else f"NOTE {index}"
+            st.html(f'<div class="plan-card {card_type}"><div class="plan-card-head"><span class="plan-step">{step}</span><span class="plan-priority">{priority}</span></div><div class="plan-copy">{_safe_ai_markup(content)}</div></div>')
+
+
+def show_ai_suggestions(data):
+    st.html("""<div class="field-guide-hero"><div class="hero-copy">
+        <div class="eyebrow">AGROINTEL · PERSONAL FARM BRIEF</div><h1>Your farm.<br>Your next move.</h1>
+        <p>Practical, prioritized guidance built from your farm records, with the evidence and unknowns made clear.</p></div>
+        <div class="hero-orbit">✳</div></div>""")
+    show_ai_setup()
+    st.html('<div class="suggestion-intro">🛡️ &nbsp;<strong>Advice with guardrails</strong> &nbsp;·&nbsp; Verify field conditions, product labels, and local requirements before high-impact actions.</div>')
+    soil_coverage = min(100, round(len(data['soil']) / len(data['fields']) * 100)) if data['fields'] else 0
+    weather_coverage = min(100, round(len(data['weather']) / 7 * 100))
+    metrics = st.columns(5)
+    metric_items = [("🌾", "Fields", len(data['fields']), "Growing areas"),
+                    ("📐", "Farm area", f"{data['total_acres']:,.0f}", "Recorded acres"),
+                    ("🧪", "Soil tests", len(data['soil']), "Nutrient records"),
+                    ("🌦️", "Weather", len(data['weather']), "Recent observations"),
+                    ("🚜", "Ready", f"{data['active_machinery']}/{data['total_machinery']}", "Equipment active")]
+    for column, (icon, label, value, caption) in zip(metrics, metric_items):
+        with column:
+            st.html(f'<div class="guide-stat"><div class="icon">{icon}</div><div class="value">{value}</div><div class="label">{label}</div><div class="hint">{caption}</div></div>')
+    st.html("<div style='height:.8rem'></div>")
+    coverage_col, generate_col = st.columns([1.05, 1])
+    with coverage_col:
+        st.html(f'''<div class="guide-coverage"><div class="guide-coverage-top"><strong>Farm data coverage</strong><span>More records sharpen guidance</span></div>
+            <div class="guide-coverage-top"><span>Fields with soil tests</span><strong>{soil_coverage}%</strong></div><div class="guide-track"><span style="width:{soil_coverage}%"></span></div>
+            <div class="guide-coverage-top"><span>Recent weather log</span><strong>{weather_coverage}%</strong></div><div class="guide-track"><span style="width:{weather_coverage}%"></span></div></div>''')
+    with generate_col:
+        st.html('<div class="guide-cta"><strong>Ready for your farm field guide?</strong><p>Review your latest field, soil, weather, and equipment records.</p></div>')
+        st.html("<div style='height:.35rem'></div>")
+        if st.button("✦  Generate my action plan", type="primary", width='stretch', key="generate_farm_suggestions"):
+            with st.status("Building your farm brief…", expanded=True) as status:
+                st.write("Reviewing recorded conditions for useful next steps")
+                st.session_state.ai_suggestions = _farm_ai_service().generate_suggestions(data)
+                status.update(label="Your farm brief is ready", state="complete", expanded=False)
+    if not data['fields']:
+        st.warning("Add fields and crop details in Farm Management to get field-specific suggestions.")
+    if st.session_state.ai_suggestions:
+        result = st.session_state.ai_suggestions
+        st.html(f'<div class="plan-section-label" style="margin-top:1.6rem">YOUR FIELD GUIDE <span style="font-size:.7rem;color:{MUTED};font-weight:400">· {datetime.now().strftime("%b %d, %Y")}</span></div>')
+        if not result['success']:
+            st.warning(result['error'])
+        render_suggestion_plan(result['response'])
+        st.caption(f"Prepared with {result.get('source', 'Farm AI')} · Refresh records before generating your next plan.")
+        st.download_button("⬇ Download action plan", result['response'], file_name="agrointel-farm-action-plan.md", mime="text/markdown")
+    else:
+        st.html('<div class="snap-card" style="text-align:center;padding:1.6rem;color:#7F9482"><div style="font-size:2rem">🌱</div><strong>Your personalized field guide will appear here</strong><br><span>Generate a plan to see recommendations, cautions, and useful data to collect.</span></div>')
+    show_page_ai("AI Suggestions", data, "What is the most important thing I should check on my farm this week?")
+
+
 # ==================== AI COPILOT PAGE ====================
 
 def show_ai_copilot(data):
-    st.html('<div class="main-header"><h1>🤖 AI Copilot</h1></div>')
-
-    groq_key = os.getenv('GROQ_API_KEY', '')
-    if groq_key:
-        st.html('<div class="api-status connected">🟢 <strong>AI Connected</strong> - Powered by Groq AI (FREE)</div>')
-    else:
-        st.html('<div class="api-status disconnected">🟡 <strong>AI Disconnected</strong> - Click "Get FREE Groq API Key" below to enable</div>')
-
-    st.html("""
-        <div class="ai-card">
-            <h4>💬 Ask AgroIntel AI</h4>
-            <p>Get predictive, explainable, and actionable guidance for your farm</p>
-            <p style="font-size:0.9rem; color:#7F9482; margin-top:0.5rem;">
-                💡 Try asking: "What should I plant next season?" or "How is my farm performing?"
-            </p>
-        </div>
-    """)
-
-    st.markdown("### 🔥 Quick Questions")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        if st.button("🌾 Crop Advice", width='stretch'):
-            st.session_state.ai_question = "What crops should I plant next season?"
-    with col2:
-        if st.button("📊 Farm Performance", width='stretch'):
-            st.session_state.ai_question = "How is my farm performing overall?"
-    with col3:
-        if st.button("🚜 Machinery Health", width='stretch'):
-            st.session_state.ai_question = "What maintenance do my machines need?"
-    with col4:
-        if st.button("💰 Profit Optimization", width='stretch'):
-            st.session_state.ai_question = "How can I increase my farm profits?"
-
-    st.markdown("---")
-
-    if not groq_key:
-        with st.expander("🔑 Get FREE Groq API Key", expanded=False):
-            st.html("""
-                ### 🆓 Get Your Free Groq API Key (No Credit Card Required)
-                1. Go to [Groq Console](https://console.groq.com/)
-                2. Sign up with your email (free)
-                3. Go to API Keys section
-                4. Click "Create API Key"
-                5. Copy and paste it below
-
-                🔑 **Pro Tip:** Groq gives you 30 requests per minute for free!
-            """)
-            api_key = st.text_input("Enter your Groq API Key:", type="password")
-            if st.button("💾 Save API Key"):
-                if api_key:
-                    os.environ['GROQ_API_KEY'] = api_key
-                    st.success("✅ API Key saved for this session!")
-                    st.rerun()
-                else:
-                    st.error("❌ Please enter a valid API key")
-
-    user_question = st.text_area(
-        "✍️ Ask your question:",
-        placeholder="e.g., Which field is most profitable? What should I do about low soil nitrogen?",
-        height=80, key="ai_question_input"
-    )
-
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        ask_button = st.button("🤖 Ask AI (FREE)", width='stretch')
-
-    question = user_question or st.session_state.get('ai_question', '')
-
-    if ask_button and question:
-        st.markdown("---")
-        with st.spinner("🤔 Analyzing your farm data with AI..."):
-            ai = ai_service.GroqAIService()
-            result = ai.get_farm_analysis(question, data)
-
-            st.markdown("### 🤖 AI Response")
-            if result['success']:
-                st.caption(f"⚡ Powered by: {result.get('source', 'Groq AI')} (FREE)")
-                st.markdown(f"""
-                    <div class="ai-card">
-                        <h4>💡 AI Analysis</h4>
-                        <div style="white-space: pre-wrap; font-size: 1rem; line-height: 1.6;">
-                            {result['response']}
-                        </div>
-                    </div>
-                """)
+    st.html('<div class="main-header"><h1>🤖 AgroIntel AI Copilot</h1><p>Your farm-aware assistant, with evidence and uncertainty made clear.</p></div>')
+    show_ai_setup()
+    st.caption("Farm records are sent only when you submit a prompt. This chat remains in the current browser session.")
+    prompt_cols = st.columns(4)
+    prompts = ["Review my farm performance", "What should I check in my soil?", "Which equipment needs attention?", "How should I plan this week?"]
+    for column, prompt in zip(prompt_cols, prompts):
+        with column:
+            if st.button(prompt, key=f"copilot_quick_{prompt}", width='stretch'):
+                st.session_state.ai_pending_question = prompt
+                st.rerun()
+    for message in st.session_state.copilot_messages:
+        with st.chat_message(message['role']):
+            if message['role'] == 'assistant':
+                render_ai_answer(message['content'], _farm_ai_service().provider or "Local analysis")
             else:
-                st.warning(f"⚠️ {result.get('error', 'AI error occurred')}")
-                st.info("💡 Using offline analysis...")
-                st.html(f"""
-                    <div class="ai-card">
-                        <h4>💡 Analysis (Offline Mode)</h4>
-                        <div style="white-space: pre-wrap; font-size: 1rem; line-height: 1.6;">
-                            {result['response']}
-                        </div>
-                    </div>
-                """)
-
-        if 'ai_question' in st.session_state:
-            del st.session_state.ai_question
-
-        show_related_data(question, data)
+                st.markdown(message['content'])
+    if not st.session_state.copilot_messages:
+        st.info("Ask about your crops, fields, soil tests, recorded weather, machinery, or compliance tasks.")
+    question = st.chat_input("Ask about your farm…") or st.session_state.pop('ai_pending_question', None)
+    if question:
+        history = st.session_state.copilot_messages[-12:]
+        st.session_state.copilot_messages.append({'role': 'user', 'content': question})
+        with st.spinner("Reviewing your farm records…"):
+            result = _farm_ai_service().get_farm_analysis(question, data, history=history)
+        if not result['success']:
+            st.warning(result['error'])
+        st.session_state.copilot_messages.append({'role': 'assistant', 'content': result['response']})
+        st.rerun()
 
 
 def show_related_data(question, data):
@@ -837,13 +1084,14 @@ def show_related_data(question, data):
 
 # ==================== FIELD INTELLIGENCE (NASA / OpenWeather / RVO) ====================
 
-def show_field_intelligence():
+def show_field_intelligence(data):
     st.html("""
         <div class="main-header">
             <h1>🛰️ Field Intelligence</h1>
             <p>Satellite climatology from orbit, live atmosphere overhead, funding on the ground.</p>
         </div>
     """)
+    show_page_ai("Field Intelligence", data, "How can I use the satellite, live-weather, and farm records shown here to plan field checks?")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -1978,6 +2226,7 @@ def show_farm_map(data):
             <p>Digital twin view of your fields — parcels sized by acreage, colored by crop.</p>
         </div>
     """)
+    show_page_ai("Farm Map", data, "Which mapped fields should I inspect first based on acreage and recorded yield?")
 
     if not MAP_AVAILABLE:
         st.warning("Map libraries not installed. Run `pip install folium streamlit-folium` to enable this page.")
@@ -2088,9 +2337,9 @@ def main():
             selected = option_menu(
                 "Navigation",
                 ["Dashboard", "🗺️ Farm Map", "Farm Management", "Machinery", "Weather",
-                 "Soil Analysis", "Compliance", "🛰️ Field Intelligence", "AI Copilot", "👤 My Profile"],
+                 "Soil Analysis", "Compliance", "🛰️ Field Intelligence", "AI Suggestions", "AI Copilot", "👤 My Profile"],
                 icons=["house", "geo-alt", "tractor", "gear", "cloud-sun",
-                       "droplet", "clipboard-check", "broadcast", "robot", "person"],
+                       "droplet", "clipboard-check", "broadcast", "lightbulb", "robot", "person"],
                 menu_icon="cast",
                 default_index=0,
                 styles=OPTION_MENU_STYLE,
@@ -2101,6 +2350,8 @@ def main():
                 st.session_state.authenticated = False
                 st.session_state.username = None
                 st.session_state.user_id = None
+                st.session_state.copilot_messages = []
+                st.session_state.ai_suggestions = None
                 st.rerun()
         else:
             tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
@@ -2115,6 +2366,8 @@ def main():
                             st.session_state.authenticated = True
                             st.session_state.username = user['username']
                             st.session_state.user_id = user['id']
+                            st.session_state.copilot_messages = []
+                            st.session_state.ai_suggestions = None
                             st.rerun()
                         else:
                             st.error("❌ Invalid username or password")
@@ -2126,13 +2379,14 @@ def main():
 
     if st.session_state.authenticated:
         if selected == "🛰️ Field Intelligence":
-            show_field_intelligence()
+            data = load_user_data(st.session_state.user_id)
+            show_field_intelligence(data)
             return
 
         data = load_user_data(st.session_state.user_id)
 
         if selected == "👤 My Profile":
-            show_profile()
+            show_profile(data)
         elif selected == "Dashboard":
             show_dashboard(data)
         elif selected == "🗺️ Farm Map":
@@ -2147,6 +2401,8 @@ def main():
             show_soil_analysis(data)
         elif selected == "Compliance":
             show_compliance(data)
+        elif selected == "AI Suggestions":
+            show_ai_suggestions(data)
         elif selected == "AI Copilot":
             show_ai_copilot(data)
     else:
